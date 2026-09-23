@@ -1,0 +1,6 @@
+{
+  "name": "Varotra - Plateforme E-commerce SaaS Multi-Boutiques",
+  "description": "Plateforme e-commerce SaaS moderne multi-boutiques avec gestion des stocks, commandes, paiements mobile money, thèmes personnalisables et boutiques indépendantes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
