@@ -7,6 +7,7 @@ import { MerchantHeader } from './components/navigation/MerchantHeader';
 // Storefront components
 import { StorefrontHeader } from './components/storefront/StorefrontHeader';
 import { HeroBanner } from './components/storefront/HeroBanner';
+import { SearchBar } from './components/storefront/SearchBar';
 import { CategoryFilter } from './components/storefront/CategoryFilter';
 import { ProductGrid } from './components/storefront/ProductGrid';
 import { StoreFooter } from './components/storefront/StoreFooter';
@@ -45,6 +46,7 @@ const AppContent: React.FC = () => {
           <div className="space-y-4">
             <StorefrontHeader />
             <HeroBanner />
+            <SearchBar />
             <CategoryFilter />
             <ProductGrid />
             <StoreFooter />

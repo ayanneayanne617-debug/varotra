@@ -28,6 +28,8 @@ export const ProductsManager: React.FC = () => {
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
+  const [productToDelete, setProductToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [notification, setNotification] = useState<string | null>(null);
 
   // Filter products
   const filtered = products
@@ -58,15 +60,24 @@ export const ProductsManager: React.FC = () => {
     });
 
   const handleDelete = (id: string, name: string) => {
-    if (window.confirm(`Voulez-vous vraiment supprimer « ${name} » ?`)) {
-      StorageService.deleteProduct(id);
+    setProductToDelete({ id, name });
+  };
+
+  const confirmDelete = () => {
+    if (productToDelete) {
+      StorageService.deleteProduct(productToDelete.id);
       refreshProducts();
+      setProductToDelete(null);
+      setNotification(`Produit « ${productToDelete.name} » supprimé avec succès.`);
+      setTimeout(() => setNotification(null), 3000);
     }
   };
 
   const handleDuplicate = (id: string) => {
     StorageService.duplicateProduct(id);
     refreshProducts();
+    setNotification('Produit dupliqué avec succès.');
+    setTimeout(() => setNotification(null), 3000);
   };
 
   const handleExportCSV = () => {
@@ -132,7 +143,8 @@ export const ProductsManager: React.FC = () => {
           }
         }
         refreshProducts();
-        alert(`${importedCount} produits importés avec succès depuis le CSV !`);
+        setNotification(`${importedCount} produits importés avec succès depuis le CSV !`);
+        setTimeout(() => setNotification(null), 4000);
       }
     };
     reader.readAsText(file);
@@ -140,6 +152,22 @@ export const ProductsManager: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-6 py-6 space-y-6 pb-24">
+      {/* Toast Notification */}
+      {notification && (
+        <div className="bg-emerald-600 text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-lg flex items-center justify-between animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-2">
+            <Check className="w-4 h-4 stroke-[3]" />
+            <span>{notification}</span>
+          </div>
+          <button
+            onClick={() => setNotification(null)}
+            className="text-emerald-200 hover:text-white font-bold ml-3"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs">
         <div>
@@ -330,6 +358,39 @@ export const ProductsManager: React.FC = () => {
           onClose={() => setIsFormModalOpen(false)}
           onSaved={() => refreshProducts()}
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {productToDelete && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 mx-auto flex items-center justify-center">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-base text-[#0F172A]">Confirmer la suppression</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Êtes-vous sûr de vouloir supprimer définitivement « <span className="font-bold text-slate-800">{productToDelete.name}</span> » ? Cette action est irréversible.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setProductToDelete(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition shadow-sm"
+              >
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
