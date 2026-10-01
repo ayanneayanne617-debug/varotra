@@ -4,6 +4,7 @@ import { StorageService } from '../../services/storage';
 import { Product } from '../../types';
 import { formatPrice } from '../../utils/currency';
 import { ProductFormModal } from './ProductFormModal';
+import { BulkProductImportModal } from './BulkProductImportModal';
 import {
   Plus,
   Search,
@@ -16,6 +17,7 @@ import {
   ArrowUpDown,
   Check,
   AlertTriangle,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export const ProductsManager: React.FC = () => {
@@ -27,6 +29,7 @@ export const ProductsManager: React.FC = () => {
   const [sortBy, setSortBy] = useState<'name' | 'price-asc' | 'price-desc' | 'stock'>('name');
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
   const [productToDelete, setProductToDelete] = useState<{ id: string; name: string } | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
@@ -180,12 +183,14 @@ export const ProductsManager: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* CSV Import */}
-          <label className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-3 py-2.5 rounded-xl cursor-pointer transition">
-            <Upload className="w-4 h-4" />
-            <span>Import CSV</span>
-            <input type="file" accept=".csv" onChange={handleImportCSV} className="hidden" />
-          </label>
+          {/* CSV Mass Import Modal Trigger */}
+          <button
+            onClick={() => setIsBulkImportOpen(true)}
+            className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs px-3.5 py-2.5 rounded-xl cursor-pointer transition shadow-2xs"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Import CSV massif</span>
+          </button>
 
           {/* CSV Export */}
           <button
@@ -357,6 +362,17 @@ export const ProductsManager: React.FC = () => {
           productToEdit={productToEdit}
           onClose={() => setIsFormModalOpen(false)}
           onSaved={() => refreshProducts()}
+        />
+      )}
+
+      {/* Bulk CSV Import Modal */}
+      {isBulkImportOpen && (
+        <BulkProductImportModal
+          onClose={() => setIsBulkImportOpen(false)}
+          onImportComplete={(count) => {
+            setNotification(`${count} produit${count > 1 ? 's' : ''} importé${count > 1 ? 's' : ''} avec succès dans le catalogue !`);
+            setTimeout(() => setNotification(null), 4000);
+          }}
         />
       )}
 

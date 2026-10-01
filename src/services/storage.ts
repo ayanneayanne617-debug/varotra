@@ -10,6 +10,9 @@ import {
   PlatformSettings,
   StockMovement,
   SubscriptionPlan,
+  ShippingAutomationRule,
+  MarketingCampaign,
+  LoyaltyTier,
 } from '../types';
 
 const STORAGE_KEYS = {
@@ -964,6 +967,56 @@ export const StorageService = {
     return duplicated;
   },
 
+  bulkAddProducts(
+    products: Omit<Product, 'id' | 'createdAt'>[],
+    mode: 'add_new' | 'update_sku' = 'add_new'
+  ): { added: number; updated: number } {
+    const all = this.getProducts();
+    let added = 0;
+    let updated = 0;
+    const now = Date.now();
+
+    products.forEach((p, idx) => {
+      const existingIndex =
+        mode === 'update_sku' && p.sku
+          ? all.findIndex(
+              (x) => x.storeId === p.storeId && x.sku.trim().toLowerCase() === p.sku.trim().toLowerCase()
+            )
+          : -1;
+
+      if (existingIndex >= 0) {
+        all[existingIndex] = {
+          ...all[existingIndex],
+          ...p,
+        };
+        updated++;
+      } else {
+        const newProduct: Product = {
+          ...p,
+          id: `prod-${now}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+          createdAt: new Date().toISOString(),
+        };
+        all.unshift(newProduct);
+        added++;
+
+        // Add initial stock movement
+        this.addStockMovement({
+          storeId: newProduct.storeId,
+          productId: newProduct.id,
+          productName: newProduct.name,
+          type: 'Entrée',
+          quantity: newProduct.stock,
+          previousStock: 0,
+          newStock: newProduct.stock,
+          reason: 'Importation massive CSV',
+        });
+      }
+    });
+
+    this.saveProducts(all);
+    return { added, updated };
+  },
+
   // Categories
   getCategories(storeId: string): Category[] {
     const all = getStored<Category[]>(STORAGE_KEYS.CATEGORIES, []);
@@ -1074,14 +1127,43 @@ export const StorageService = {
   // Customers
   getCustomers(storeId?: string): Customer[] {
     const all = getStored<Customer[]>(STORAGE_KEYS.CUSTOMERS, []);
+    const source = (!all || all.length === 0) ? INITIAL_CUSTOMERS : all;
+    
+    // Enrich with default loyalty points and tiers if missing
+    const enriched = source.map((c) => {
+      const points = c.loyaltyPoints !== undefined ? c.loyaltyPoints : Math.floor(c.totalSpent / 1000);
+      const tier: LoyaltyTier = c.loyaltyTier || (points >= 600 ? 'Platine' : points >= 300 ? 'Or' : points >= 100 ? 'Argent' : 'Bronze');
+      return {
+        ...c,
+        loyaltyPoints: points,
+        loyaltyTier: tier,
+      };
+    });
+
     if (!all || all.length === 0) {
-      setStored(STORAGE_KEYS.CUSTOMERS, INITIAL_CUSTOMERS);
-      return storeId ? INITIAL_CUSTOMERS.filter((c) => c.storeId === storeId) : INITIAL_CUSTOMERS;
+      setStored(STORAGE_KEYS.CUSTOMERS, enriched);
     }
+
     if (storeId) {
-      return all.filter((c) => c.storeId === storeId);
+      return enriched.filter((c) => c.storeId === storeId);
     }
-    return all;
+    return enriched;
+  },
+
+  updateCustomerLoyalty(customerId: string, pointsDelta: number): Customer | null {
+    const all = this.getCustomers();
+    const customer = all.find((c) => c.id === customerId);
+    if (!customer) return null;
+
+    const currentPoints = customer.loyaltyPoints || 0;
+    const newPoints = Math.max(0, currentPoints + pointsDelta);
+    const newTier: LoyaltyTier =
+      newPoints >= 600 ? 'Platine' : newPoints >= 300 ? 'Or' : newPoints >= 100 ? 'Argent' : 'Bronze';
+
+    customer.loyaltyPoints = newPoints;
+    customer.loyaltyTier = newTier;
+    setStored(STORAGE_KEYS.CUSTOMERS, all);
+    return customer;
   },
 
   recordCustomerOrder(
@@ -1093,13 +1175,18 @@ export const StorageService = {
       (c) => c.storeId === storeId && (c.phone === data.phone || (data.email && c.email.toLowerCase() === data.email.toLowerCase()))
     );
 
+    const earnedPoints = Math.floor(data.spent / 1000);
+
     if (existing) {
       existing.totalOrders += 1;
       existing.totalSpent += data.spent;
+      existing.loyaltyPoints = (existing.loyaltyPoints || 0) + earnedPoints;
+      existing.loyaltyTier = existing.loyaltyPoints >= 600 ? 'Platine' : existing.loyaltyPoints >= 300 ? 'Or' : existing.loyaltyPoints >= 100 ? 'Argent' : 'Bronze';
       existing.lastOrderDate = new Date().toISOString();
       existing.address = data.address || existing.address;
       existing.city = data.city || existing.city;
     } else {
+      const newPoints = earnedPoints;
       customers.push({
         id: `cust-${Date.now()}`,
         storeId,
@@ -1110,6 +1197,8 @@ export const StorageService = {
         city: data.city,
         totalOrders: 1,
         totalSpent: data.spent,
+        loyaltyPoints: newPoints,
+        loyaltyTier: newPoints >= 600 ? 'Platine' : newPoints >= 300 ? 'Or' : newPoints >= 100 ? 'Argent' : 'Bronze',
         lastOrderDate: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       });
@@ -1192,5 +1281,107 @@ export const StorageService = {
 
   savePlatformSettings(settings: PlatformSettings) {
     setStored(STORAGE_KEYS.PLATFORM_SETTINGS, settings);
+  },
+
+  // Shipping Automation Rules
+  getShippingRules(storeId: string): ShippingAutomationRule[] {
+    const defaultRules: ShippingAutomationRule[] = [
+      {
+        id: 'rule-1',
+        storeId,
+        title: 'Dispatch Express Antananarivo',
+        description: 'Attribuer automatiquement les livraisons intramuros à Antananarivo Express (Livreur Moto).',
+        triggerEvent: 'destination_city',
+        action: 'assign_carrier',
+        carrierName: 'Antananarivo Express Moto',
+        active: true,
+      },
+      {
+        id: 'rule-2',
+        storeId,
+        title: 'Notification SMS / WhatsApp automatique',
+        description: 'Envoyer instantanément un message WhatsApp ou SMS avec le lien de suivi dès le passage en Expédiée.',
+        triggerEvent: 'order_paid',
+        action: 'send_tracking_sms',
+        active: true,
+      },
+      {
+        id: 'rule-3',
+        storeId,
+        title: 'Mise en préparation immédiate',
+        description: 'Passer la commande en "Préparation" dès validation du paiement Mobile Money.',
+        triggerEvent: 'order_paid',
+        action: 'mark_in_preparation',
+        active: true,
+      },
+    ];
+    return getStored<ShippingAutomationRule[]>(`varotra_shipping_rules_${storeId}`, defaultRules);
+  },
+
+  saveShippingRules(storeId: string, rules: ShippingAutomationRule[]) {
+    setStored(`varotra_shipping_rules_${storeId}`, rules);
+  },
+
+  // Marketing Automation Campaigns
+  getMarketingCampaigns(storeId: string): MarketingCampaign[] {
+    const defaultCampaigns: MarketingCampaign[] = [
+      {
+        id: 'camp-1',
+        storeId,
+        title: 'Relance Paniers Abandonnés (WhatsApp)',
+        type: 'abandoned_cart',
+        channel: 'whatsapp',
+        status: 'active',
+        messageTemplate: 'Bonjour {{nom}} ! Vos articles vous attendent sur {{boutique}}. Bénéficiez de 10% de remise immédiate avec le code REVIENS10 !',
+        triggerCondition: '1 heure après abandon du panier',
+        sentCount: 38,
+        conversionRate: 23.7,
+        createdAt: '2026-02-01',
+      },
+      {
+        id: 'camp-2',
+        storeId,
+        title: 'Bienvenue & Cadeau Premier Achat',
+        type: 'welcome_offer',
+        channel: 'sms',
+        status: 'active',
+        messageTemplate: 'Bienvenue chez {{boutique}} ! Profitez de la livraison offerte dès 50 000 Ar sur votre premier achat avec le code BIENVENUE.',
+        triggerCondition: 'Création de compte client',
+        sentCount: 114,
+        conversionRate: 31.5,
+        createdAt: '2026-01-20',
+      },
+      {
+        id: 'camp-3',
+        storeId,
+        title: 'Récompense Palier Fidélité (Or & VIP)',
+        type: 'loyalty_reward',
+        channel: 'whatsapp',
+        status: 'active',
+        messageTemplate: 'Félicitations {{nom}} ! Vous avez atteint le statut VIP Or. Votre bon d’achat fidélité de 20 000 Ar est utilisable immédiatement !',
+        triggerCondition: 'Dépassement de 300 points de fidélité',
+        sentCount: 19,
+        conversionRate: 68.4,
+        createdAt: '2026-02-15',
+      },
+      {
+        id: 'camp-4',
+        storeId,
+        title: 'Vente Flash Weekend (Spécial Épices)',
+        type: 'flash_sale',
+        channel: 'sms',
+        status: 'active',
+        messageTemplate: '⚡ Flash Weekend : -15% sur toutes les gousses de vanille et poivre sauvage jusqu’à dimanche minuit ! Code : FLASHMADA.',
+        triggerCondition: 'Déclenchement instantané ou programmé',
+        sentCount: 240,
+        conversionRate: 18.2,
+        createdAt: '2026-03-01',
+      },
+    ];
+    return getStored<MarketingCampaign[]>(`varotra_marketing_campaigns_${storeId}`, defaultCampaigns);
+  },
+
+  saveMarketingCampaigns(storeId: string, campaigns: MarketingCampaign[]) {
+    setStored(`varotra_marketing_campaigns_${storeId}`, campaigns);
   },
 };

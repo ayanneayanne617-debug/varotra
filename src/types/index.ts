@@ -100,6 +100,8 @@ export interface Order {
   updatedAt: string;
 }
 
+export type LoyaltyTier = 'Bronze' | 'Argent' | 'Or' | 'Platine';
+
 export interface Customer {
   id: string;
   storeId: string;
@@ -110,7 +112,34 @@ export interface Customer {
   city: string;
   totalOrders: number;
   totalSpent: number;
+  loyaltyPoints?: number;
+  loyaltyTier?: LoyaltyTier;
   lastOrderDate?: string;
+  createdAt: string;
+}
+
+export interface ShippingAutomationRule {
+  id: string;
+  storeId: string;
+  title: string;
+  description: string;
+  triggerEvent: 'order_paid' | 'order_confirmed' | 'destination_city';
+  action: 'assign_carrier' | 'send_tracking_sms' | 'mark_in_preparation';
+  carrierName?: string;
+  active: boolean;
+}
+
+export interface MarketingCampaign {
+  id: string;
+  storeId: string;
+  title: string;
+  type: 'abandoned_cart' | 'loyalty_reward' | 'welcome_offer' | 'flash_sale';
+  channel: 'whatsapp' | 'sms' | 'email';
+  status: 'active' | 'paused' | 'draft';
+  messageTemplate: string;
+  triggerCondition: string;
+  sentCount: number;
+  conversionRate: number;
   createdAt: string;
 }
 
